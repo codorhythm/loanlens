@@ -1,14 +1,21 @@
 package com.loanlens.model.response;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
 @Builder
-public class LoanDecisionResponse {
+@NoArgsConstructor
+@AllArgsConstructor
+public class LoanDecisionResponse implements Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private String applicationId;
     private String fullName;
