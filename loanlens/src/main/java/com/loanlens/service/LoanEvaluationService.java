@@ -21,6 +21,7 @@ public class LoanEvaluationService {
     private final LoanEligibilityEngine engine;
     private final LoanApplicationRepository repository;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ClaudeExplanationService claudeExplanationService;
 
     private static final String CACHE_PREFIX = "loanlens:evaluation:";
     private static final long CACHE_TTL_HOURS = 24;
@@ -75,6 +76,12 @@ public class LoanEvaluationService {
                 .aiExplanation(null)
                 .evaluatedAt(saved.getEvaluatedAt())
                 .build();
+
+        String explanation = claudeExplanationService.generateExplanation(response);
+        response.setAiExplanation(explanation);
+
+        saved.setAiExplanation(explanation);
+        repository.save(saved);
 
         redisTemplate.opsForValue().set(cacheKey, response, CACHE_TTL_HOURS, TimeUnit.HOURS);
         log.info("cached response for key {} with ttl {} hours", cacheKey, CACHE_TTL_HOURS);
