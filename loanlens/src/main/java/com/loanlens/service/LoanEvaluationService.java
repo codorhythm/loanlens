@@ -6,19 +6,36 @@ import com.loanlens.model.request.BorrowerRequest;
 import com.loanlens.model.response.LoanDecisionResponse;
 import com.loanlens.repository.LoanApplicationRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LoanEvaluationService {
 
     private final LoanEligibilityEngine engine;
     private final LoanApplicationRepository repository;
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    private static final String CACHE_PREFIX = "loanlens:evaluation:";
+    private static final long CACHE_TTL_HOURS = 24;
 
     public LoanDecisionResponse evaluate(BorrowerRequest request) {
+
+        String cacheKey = buildCacheKey(request);
+
+        Object cached = redisTemplate.opsForValue().get(cacheKey);
+        if (cached != null) {
+            log.info("cache hit for key {}", cacheKey);
+            return (LoanDecisionResponse) cached;
+        }
+
+        log.info("cache miss for key {}", cacheKey);
 
         LoanEligibilityEngine.EngineResult result = engine.evaluate(request);
 
@@ -45,7 +62,7 @@ public class LoanEvaluationService {
 
         LoanApplication saved = repository.save(application);
 
-        return LoanDecisionResponse.builder()
+        LoanDecisionResponse response = LoanDecisionResponse.builder()
                 .applicationId(saved.getId())
                 .fullName(saved.getFullName())
                 .decision(saved.getDecision())
@@ -58,5 +75,20 @@ public class LoanEvaluationService {
                 .aiExplanation(null)
                 .evaluatedAt(saved.getEvaluatedAt())
                 .build();
+
+        redisTemplate.opsForValue().set(cacheKey, response, CACHE_TTL_HOURS, TimeUnit.HOURS);
+        log.info("cached response for key {} with ttl {} hours", cacheKey, CACHE_TTL_HOURS);
+
+        return response;
+    }
+
+    private String buildCacheKey(BorrowerRequest request) {
+        return CACHE_PREFIX
+                + request.getCreditScore() + ":"
+                + request.getMonthlyIncome() + ":"
+                + request.getMonthlyDebt() + ":"
+                + request.getRequestedLoanAmount() + ":"
+                + request.getLoanTenureMonths() + ":"
+                + request.getEmploymentType().toUpperCase();
     }
 }
